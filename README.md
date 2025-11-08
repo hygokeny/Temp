@@ -169,3 +169,71 @@ METHOD on_end_of_task.
           i_msgno = '001'
           i_msgty = 'I'
           i_msgv1 = |Total de mensagens: { lv_total }|
+          i_msgv2 = |Erros: { lv_errors }|
+          i_msgv3 = |Avisos: { lv_warnings }|
+          i_msgv4 = |Sucessos: { lv_success }|
+        ).
+
+      ELSE.
+        " Nenhuma mensagem retornada
+        lo_logger->add_msg(
+          i_msgid = '00'
+          i_msgno = '001'
+          i_msgty = 'W'
+          i_msgv1 = 'Nenhuma mensagem retornada pela BAPI'
+        ).
+      ENDIF.
+
+      " ========================================
+      " RESULTADO FINAL
+      " ========================================
+      lo_logger->add_msg(
+        i_msgid = '00'
+        i_msgno = '001'
+        i_msgty = 'I'
+        i_msgv1 = '================================'
+      ).
+
+      IF lv_has_error = abap_true.
+        lo_logger->add_msg(
+          i_msgid = '00'
+          i_msgno = '001'
+          i_msgty = 'E'
+          i_msgv1 = 'RESULTADO: FALHA'
+          i_msgv2 = |Usuário { me->i_user } NÃO foi criado|
+        ).
+      ELSE.
+        lo_logger->add_msg(
+          i_msgid = '00'
+          i_msgno = '001'
+          i_msgty = 'S'
+          i_msgv1 = 'RESULTADO: SUCESSO'
+          i_msgv2 = |Usuário { me->i_user } criado com sucesso|
+        ).
+      ENDIF.
+
+      " ========================================
+      " SALVAR LOG NO BANCO
+      " ========================================
+      lo_logger->save( ).
+
+      " Adicionar mensagem de sucesso ao gt_return
+      APPEND VALUE #(
+        type    = 'S'
+        id      = '00'
+        number  = '001'
+        message = 'Application Log gravado com sucesso na SLG1'
+      ) TO gt_return.
+
+    CATCH cx_root INTO DATA(lx_error).
+      " Se houver erro ao criar log
+      APPEND VALUE #(
+        type       = 'E'
+        id         = '00'
+        number     = '001'
+        message    = |Erro ao gravar log: { lx_error->get_text( ) }|
+        message_v1 = lx_error->get_text( )
+      ) TO gt_return.
+  ENDTRY.
+
+ENDMETHOD.
