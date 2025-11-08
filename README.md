@@ -1,276 +1,283 @@
-class CL_BAL_LOG definition
-  public
-  final
-  create public .
+METHOD on_end_of_task.
+  DATA: lv_exception   TYPE char50,
+        lo_log         TYPE REF TO cl_bal_log,
+        lv_has_error   TYPE abap_bool VALUE abap_false,
+        lv_has_warning TYPE abap_bool VALUE abap_false,
+        lv_has_success TYPE abap_bool VALUE abap_false.
 
-public section.
+  " Limpar retorno anterior
+  CLEAR gt_return.
 
-  methods CREATE
-    importing
-      !IV_SBSDC type OIO_RT_SBSDC_ID optional .
-  methods ADD_MESSAGE
-    importing
-      !IV_MSGTY type SYST_MSGTY
-      !IV_MSGID type SYST_MSGID
-      !IV_MSGNO type SYST_MSGNO
-      !IV_MSGV1 type SYST_MSGV
-      !IV_MSGV2 type SYST_MSGV
-      !IV_MSGV3 type SYST_MSGV
-      !IV_MSGV4 type SYST_MSGV .
-  methods REFRESH .
-  methods SAVE .
-  methods READ
-    importing
-      !IV_LOG_HANDLE type BALLOGHNDL
-    exporting
-      !ET_MSG type BAL_T_MSG .
-  methods MERGE_LOG .
-protected section.
-private section.
+  " Receber resultados da BAPI
+  RECEIVE RESULTS FROM FUNCTION 'BAPI_USER_CREATE'
+    TABLES
+      return                = gt_return
+    EXCEPTIONS
+      communication_failure = 1 MESSAGE lv_exception
+      system_failure        = 2 MESSAGE lv_exception
+      resource_failure      = 3.
 
-  data GV_LOG_HANDLE type BALLOGHNDL .
-  data GV_MSGSV_MAX type N .
-  data GV_MSGTY_MAX type BAPI_MTYPE .
-ENDCLASS.
+  " Se houver exceção de comunicação
+  IF sy-subrc <> 0.
+    APPEND VALUE #(
+      type       = 'E'
+      id         = '00'
+      number     = '398'
+      message    = |Exceção de comunicação: { lv_exception }|
+      message_v1 = lv_exception
+    ) TO gt_return.
+  ENDIF.
 
+  " ========================================
+  " CRIAR APPLICATION LOG usando CL_BAL_LOG
+  " ========================================
+  TRY.
+      " Criar instância do log
+      lo_log = NEW cl_bal_log( ).
+      
+      " Criar log
+      lo_log->create( ).
 
+      " ========================================
+      " CABEÇALHO DO LOG
+      " ========================================
+      lo_log->add_message(
+        iv_msgty = 'I'
+        iv_msgid = '00'
+        iv_msgno = '001'
+        iv_msgv1 = '========== CRIAÇÃO DE USUÁRIO =========='
+        iv_msgv2 = ''
+        iv_msgv3 = ''
+        iv_msgv4 = ''
+      ).
 
-CLASS CL_BAL_LOG IMPLEMENTATION.
+      lo_log->add_message(
+        iv_msgty = 'I'
+        iv_msgid = '00'
+        iv_msgno = '001'
+        iv_msgv1 = |Data/Hora: { sy-datum } { sy-uzeit }|
+        iv_msgv2 = |Usuário: { sy-uname }|
+        iv_msgv3 = |Programa: { sy-cprog }|
+        iv_msgv4 = |Transação: { sy-tcode }|
+      ).
 
+      " ========================================
+      " DADOS DO USUÁRIO
+      " ========================================
+      lo_log->add_message(
+        iv_msgty = 'I'
+        iv_msgid = '00'
+        iv_msgno = '001'
+        iv_msgv1 = |Usuário: { me->i_user }|
+        iv_msgv2 = |Email: { me->i_email }|
+        iv_msgv3 = ''
+        iv_msgv4 = ''
+      ).
 
-  METHOD add_message.
+      lo_log->add_message(
+        iv_msgty = 'I'
+        iv_msgid = '00'
+        iv_msgno = '001'
+        iv_msgv1 = |Departamento: { me->i_departament }|
+        iv_msgv2 = |Função: { me->i_function }|
+        iv_msgv3 = |Empresa: { me->i_company }|
+        iv_msgv4 = ''
+      ).
 
-*   local data
-    DATA:
-      lv_msgsv       TYPE n,
-      ls_msg         TYPE bal_s_msg.
+      lo_log->add_message(
+        iv_msgty = 'I'
+        iv_msgid = '00'
+        iv_msgno = '001'
+        iv_msgv1 = |Válido de: { me->i_begda }|
+        iv_msgv2 = |Válido até: { me->i_endda }|
+        iv_msgv3 = ''
+        iv_msgv4 = ''
+      ).
 
-*------------------------------------------------------------
-* Application log
-*------------------------------------------------------------
+      " ========================================
+      " PROCESSAR MENSAGENS DO GT_RETURN
+      " ========================================
+      IF gt_return IS NOT INITIAL.
 
-*   Message parameters
-    ls_msg-msgty = iv_msgty.
-    ls_msg-msgid = iv_msgid.
-    ls_msg-msgno = iv_msgno.
-    ls_msg-msgv1 = iv_msgv1.
-    ls_msg-msgv2 = iv_msgv2.
-    ls_msg-msgv3 = iv_msgv3.
-    ls_msg-msgv4 = iv_msgv4.
+        lo_log->add_message(
+          iv_msgty = 'I'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = '========== MENSAGENS DA BAPI =========='
+          iv_msgv2 = ''
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
 
-*   Interpret message type
-    CASE iv_msgty.
-      WHEN 'X'.
-        lv_msgsv          = if_oio_oil_constants=>gc_msgsv_x.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_very_high.
-      WHEN 'A'.
-        lv_msgsv          = if_oio_oil_constants=>gc_msgsv_a.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_very_high.
-      WHEN 'E'.
-        lv_msgsv          = if_oio_oil_constants=>gc_msgsv_e.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_high.
-      WHEN 'W'.
-        lv_msgsv          = if_oio_oil_constants=>gc_msgsv_w.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_medium.
-      WHEN 'I'.
-        lv_msgsv          = if_oio_oil_constants=>gc_msgsv_i.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_low.
-      WHEN 'S'.
-        lv_msgsv          = if_oio_oil_constants=>gc_msgsv_s.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_low.
-      WHEN OTHERS.
-        ls_msg-probclass = if_oio_oil_constants=>gc_probclass_low.
-    ENDCASE.
+        LOOP AT gt_return ASSIGNING FIELD-SYMBOL(<return>).
 
-*   Maximum severity
-    IF lv_msgsv > gv_msgsv_max.
-      gv_msgsv_max = lv_msgsv.
-      gv_msgty_max = iv_msgty.
-    ENDIF.
+          " Adicionar cada mensagem do BAPIRET2 ao log
+          lo_log->add_message(
+            iv_msgty = <return>-type
+            iv_msgid = <return>-id
+            iv_msgno = <return>-number
+            iv_msgv1 = <return>-message_v1
+            iv_msgv2 = <return>-message_v2
+            iv_msgv3 = <return>-message_v3
+            iv_msgv4 = <return>-message_v4
+          ).
 
-*   Add message to log file
-    CALL FUNCTION 'BAL_LOG_MSG_ADD'
-      EXPORTING
-        i_log_handle     = gv_log_handle
-        i_s_msg          = ls_msg
-      EXCEPTIONS
-        log_not_found    = 1
-        msg_inconsistent = 2
-        log_is_full      = 3
-        OTHERS           = 4.
-    IF sy-subrc <> 0.
-      MESSAGE ID sy-msgid TYPE 'S' NUMBER sy-msgno
-              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
-    ENDIF.
+          " Adicionar detalhes extras se existirem
+          IF <return>-parameter IS NOT INITIAL OR
+             <return>-field IS NOT INITIAL OR
+             <return>-row IS NOT INITIAL.
+            
+            lo_log->add_message(
+              iv_msgty = 'I'
+              iv_msgid = '00'
+              iv_msgno = '001'
+              iv_msgv1 = |Parâmetro: { <return>-parameter }|
+              iv_msgv2 = |Campo: { <return>-field }|
+              iv_msgv3 = |Linha: { <return>-row }|
+              iv_msgv4 = |Sistema: { <return>-system }|
+            ).
+          ENDIF.
 
-  ENDMETHOD.
+          " Verificar tipo de mensagem
+          CASE <return>-type.
+            WHEN 'E' OR 'A'.
+              lv_has_error = abap_true.
+            WHEN 'W'.
+              lv_has_warning = abap_true.
+            WHEN 'S'.
+              lv_has_success = abap_true.
+          ENDCASE.
 
+        ENDLOOP.
 
-  METHOD create.
+        " ========================================
+        " ESTATÍSTICAS
+        " ========================================
+        DATA(lv_total_msgs) = lines( gt_return ).
+        DATA(lv_errors)     = REDUCE i( INIT x = 0
+                                        FOR wa IN gt_return
+                                        WHERE ( type = 'E' OR type = 'A' )
+                                        NEXT x = x + 1 ).
+        DATA(lv_warnings)   = REDUCE i( INIT x = 0
+                                        FOR wa IN gt_return
+                                        WHERE ( type = 'W' )
+                                        NEXT x = x + 1 ).
+        DATA(lv_success)    = REDUCE i( INIT x = 0
+                                        FOR wa IN gt_return
+                                        WHERE ( type = 'S' )
+                                        NEXT x = x + 1 ).
 
-    DATA:
-      ls_prof               TYPE bal_s_prof,
-*      ls_msg_handle         type balmsghndl,
-      ls_log                TYPE bal_s_log.
-*      ls_log_profile        type bal_s_prof.
+        lo_log->add_message(
+          iv_msgty = 'I'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = '========== RESUMO =========='
+          iv_msgv2 = ''
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
 
-*----------------------------------------------------------------
-*  Create log instance
-*----------------------------------------------------------------
+        lo_log->add_message(
+          iv_msgty = 'I'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = |Total mensagens: { lv_total_msgs }|
+          iv_msgv2 = |Erros: { lv_errors }|
+          iv_msgv3 = |Avisos: { lv_warnings }|
+          iv_msgv4 = |Sucessos: { lv_success }|
+        ).
 
-*   define header data for application log
-    ls_log-object           = if_oio_oil_constants=>gc_returns_subs.
-    ls_log-subobject        = space.
-    ls_log-aldate           = sy-datum.
-    ls_log-altime           = sy-uzeit.
-    ls_log-aluser           = sy-uname.
-    ls_log-altcode          = sy-tcode.
-    ls_log-alprog           = sy-repid.
-    ls_log-almode         =  'D'.     "Dialog
-    ls_log-aldate_del       = sy-datum.
-    ls_log-aldate_del       = ls_log-aldate_del + 31.
-    ls_log-aldate_del+6(2)  = sy-datum+6(2).   "One month's time
-    ls_log-del_before       = if_oio_oil_constants=>gc_true.
+      ELSE.
+        " Nenhuma mensagem retornada
+        lo_log->add_message(
+          iv_msgty = 'W'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = 'ATENÇÃO: Nenhuma mensagem retornada pela'
+          iv_msgv2 = 'BAPI'
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
+      ENDIF.
 
-*   create a log
-    CALL FUNCTION 'BAL_LOG_CREATE'
-      EXPORTING
-        i_s_log      = ls_log
-      IMPORTING
-        e_log_handle = gv_log_handle
-      EXCEPTIONS
-        OTHERS       = 1.
+      " ========================================
+      " RESULTADO FINAL
+      " ========================================
+      lo_log->add_message(
+        iv_msgty = 'I'
+        iv_msgid = '00'
+        iv_msgno = '001'
+        iv_msgv1 = '========================================'
+        iv_msgv2 = ''
+        iv_msgv3 = ''
+        iv_msgv4 = ''
+      ).
 
-    IF sy-subrc <> 0.
-      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
-              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
-    ENDIF.
+      IF lv_has_error = abap_true.
+        lo_log->add_message(
+          iv_msgty = 'E'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = |RESULTADO: FALHA|
+          iv_msgv2 = |Usuário { me->i_user } NÃO foi criado|
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
+      ELSEIF lv_has_warning = abap_true.
+        lo_log->add_message(
+          iv_msgty = 'W'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = |RESULTADO: PARCIAL|
+          iv_msgv2 = |Usuário { me->i_user } criado com avisos|
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
+      ELSEIF lv_has_success = abap_true.
+        lo_log->add_message(
+          iv_msgty = 'S'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = |RESULTADO: SUCESSO|
+          iv_msgv2 = |Usuário { me->i_user } criado com sucesso|
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
+      ELSE.
+        lo_log->add_message(
+          iv_msgty = 'W'
+          iv_msgid = '00'
+          iv_msgno = '001'
+          iv_msgv1 = |RESULTADO: INDETERMINADO|
+          iv_msgv2 = 'Verificar mensagens'
+          iv_msgv3 = ''
+          iv_msgv4 = ''
+        ).
+      ENDIF.
 
-*----------------------------------------------------------------
-*   profile for popup
-*----------------------------------------------------------------
-*   Get standard profile for popup
-    CALL FUNCTION 'BAL_DSP_PROFILE_POPUP_GET'
-      IMPORTING
-        e_s_display_profile = ls_prof.
+      " ========================================
+      " SALVAR LOG NO BANCO
+      " ========================================
+      lo_log->save( ).
 
-  ENDMETHOD.
+      " Adicionar mensagem ao gt_return informando que log foi gravado
+      APPEND VALUE #(
+        type       = 'I'
+        id         = '00'
+        number     = '001'
+        message    = 'Application Log gravado com sucesso'
+        parameter  = 'LOG_SAVED'
+      ) TO gt_return.
 
+    CATCH cx_root INTO DATA(lx_error).
+      " Se houver erro ao criar log, adicionar ao gt_return
+      APPEND VALUE #(
+        type       = 'E'
+        id         = '00'
+        number     = '001'
+        message    = |ERRO ao gravar log: { lx_error->get_text( ) }|
+        message_v1 = lx_error->get_text( )
+      ) TO gt_return.
+  ENDTRY.
 
-  METHOD merge_log.
-
-    DATA: lv_log_handle  TYPE balloghndl,
-          ls_msg        TYPE bal_s_msg,
-          lt_msg        TYPE bal_t_msg.
-*
-*    ls_logh_from = i_logh.
-    CALL METHOD read
-      EXPORTING
-        iv_log_handle = lv_log_handle
-      IMPORTING
-        et_msg        = lt_msg.
-
-    LOOP AT lt_msg INTO ls_msg.
-      CALL METHOD me->add_message
-        EXPORTING
-          iv_msgty = ls_msg-msgty
-          iv_msgid = ls_msg-msgid
-          iv_msgno = ls_msg-msgno
-          iv_msgv1 = ls_msg-msgv1
-          iv_msgv2 = ls_msg-msgv2
-          iv_msgv3 = ls_msg-msgv3
-          iv_msgv4 = ls_msg-msgv4.
-    ENDLOOP.
-
-  ENDMETHOD.
-
-
-  METHOD read.
-
-    DATA:
-        lt_log_handle   TYPE bal_t_logh,
-        lv_msg_handle   TYPE balmsghndl,
-        lt_msg_handle   TYPE bal_t_msgh,
-        ls_msg          TYPE bal_s_msg,
-        lt_msg          TYPE bal_t_msg.
-
-*   get messages in log
-    APPEND iv_log_handle TO lt_log_handle.
-    CALL FUNCTION 'BAL_GLB_SEARCH_MSG'
-      EXPORTING
-        i_t_log_handle = lt_log_handle
-      IMPORTING
-        e_t_msg_handle = lt_msg_handle
-      EXCEPTIONS
-        msg_not_found  = 1
-        OTHERS         = 2.
-
-*   If messages found append them to global application log
-    IF sy-subrc = 0.
-      LOOP AT lt_msg_handle INTO lv_msg_handle.
-        CALL FUNCTION 'BAL_LOG_MSG_READ'
-          EXPORTING
-            i_s_msg_handle = lv_msg_handle
-          IMPORTING
-            e_s_msg        = ls_msg
-          EXCEPTIONS
-            msg_not_found  = 1
-            OTHERS         = 2.
-
-        APPEND ls_msg TO lt_msg.
-
-      ENDLOOP.
-    ENDIF.
-    et_msg[] = lt_msg[].
-
-  ENDMETHOD.
-
-
-  METHOD refresh.
-
-    CALL FUNCTION 'BAL_LOG_MSG_DELETE_ALL'
-      EXPORTING
-        i_log_handle  = gv_log_handle
-      EXCEPTIONS
-        log_not_found = 1
-        OTHERS        = 2.
-    IF sy-subrc <> 0.
-      MESSAGE ID sy-msgid TYPE 'S' NUMBER sy-msgno
-              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
-    ENDIF.
-
-    CLEAR:
-      gv_msgsv_max,
-      gv_msgty_max.
-
-  ENDMETHOD.
-
-
-  METHOD save.
-
-    DATA: lt_log_handle TYPE bal_t_logh.
-
-    IF gv_msgsv_max IS INITIAL.
-      RETURN.
-    ENDIF.
-
-* save message log
-    APPEND gv_log_handle TO lt_log_handle.
-
-    CALL FUNCTION 'BAL_DB_SAVE'
-      EXPORTING
-        i_save_all       = 'X'
-        i_t_log_handle   = lt_log_handle
-      EXCEPTIONS
-        log_not_found    = 1
-        save_not_allowed = 2
-        numbering_error  = 3
-        OTHERS           = 4.
-
-    IF sy-subrc <> 0.
-      MESSAGE ID sy-msgid TYPE 'S' NUMBER sy-msgno
-              WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
-    ENDIF.
-
-  ENDMETHOD.
-ENDCLASS.
+ENDMETHOD.
