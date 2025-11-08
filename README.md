@@ -1,142 +1,151 @@
-CLASS zcl_application_log DEFINITION
-  PUBLIC
-  FINAL
-  CREATE PUBLIC.
+METHOD on_end_of_task.
+  DATA: lv_exception  TYPE char50,
+        lo_log        TYPE REF TO zcl_application_log,
+        lv_has_error  TYPE abap_bool VALUE abap_false,
+        lv_has_warning TYPE abap_bool VALUE abap_false,
+        lv_operation  TYPE string.
 
-  PUBLIC SECTION.
+  " Receber resultados da BAPI
+  RECEIVE RESULTS FROM FUNCTION 'BAPI_USER_CREATE'
+    TABLES
+      return                = gt_return
+    EXCEPTIONS
+      communication_failure = 1 MESSAGE lv_exception
+      system_failure        = 2 MESSAGE lv_exception
+      resource_failure      = 3.
 
-    METHODS constructor
-      IMPORTING
-        iv_object     TYPE balobj_d DEFAULT 'ZAPP_LOG'
-        iv_subobject  TYPE balsubobj DEFAULT 'ZUSER_CRUD'
-        iv_extnumber  TYPE balnrext OPTIONAL.
+  " Criar log de aplicação
+  TRY.
+      " Criar instância do log
+      lo_log = NEW zcl_application_log(
+        iv_object     = 'ZAPP_LOG'
+        iv_subobject  = 'ZUSER_CRUD'
+        iv_extnumber  = |USER_{ me->i_user }_{ sy-datum }{ sy-uzeit }|
+      ).
 
-    METHODS add_message_from_bapiret2
-      IMPORTING
-        is_return TYPE bapiret2.
+      " Determinar tipo de operação
+      lv_operation = |Criação de usuário { me->i_user }|.
 
-    METHODS add_message_text
-      IMPORTING
-        iv_text  TYPE string
-        iv_msgty TYPE sy-msgty DEFAULT 'I'.
+      " Adicionar mensagem inicial
+      lo_log->add_message_text(
+        iv_text  = |Início: { lv_operation }|
+        iv_msgty = 'I'
+      ).
 
-    METHODS save_log
-      RETURNING
-        VALUE(rv_log_number) TYPE balognr.
+      " Adicionar detalhes da requisição
+      lo_log->add_message_text(
+        iv_text  = |Usuário: { me->i_user }|
+        iv_msgty = 'I'
+      ).
+      
+      lo_log->add_message_text(
+        iv_text  = |Email: { me->i_email }|
+        iv_msgty = 'I'
+      ).
+      
+      lo_log->add_message_text(
+        iv_text  = |Departamento: { me->i_departament }|
+        iv_msgty = 'I'
+      ).
+      
+      lo_log->add_message_text(
+        iv_text  = |Função: { me->i_function }|
+        iv_msgty = 'I'
+      ).
+      
+      lo_log->add_message_text(
+        iv_text  = |Empresa: { me->i_company }|
+        iv_msgty = 'I'
+      ).
+      
+      lo_log->add_message_text(
+        iv_text  = |Válido de { me->i_begda } até { me->i_endda }|
+        iv_msgty = 'I'
+      ).
 
-  PRIVATE SECTION.
-    DATA: mv_log_handle TYPE balloghndl.
+      " Processar e logar todas as mensagens do gt_return
+      IF gt_return IS NOT INITIAL.
+        
+        LOOP AT gt_return ASSIGNING FIELD-SYMBOL(<return>).
+          
+          " Adicionar cada mensagem BAPIRET2 ao log
+          lo_log->add_message_from_bapiret2( <return> ).
+          
+          " Verificar se há erros ou warnings
+          CASE <return>-type.
+            WHEN 'E' OR 'A'.  " Error ou Abort
+              lv_has_error = abap_true.
+            WHEN 'W'.         " Warning
+              lv_has_warning = abap_true.
+          ENDCASE.
+          
+        ENDLOOP.
 
-    METHODS create_log_header
-      IMPORTING
-        iv_object    TYPE balobj_d
-        iv_subobject TYPE balsubobj
-        iv_extnumber TYPE balnrext OPTIONAL.
+        " Adicionar resumo
+        DATA(lv_total_msgs) = lines( gt_return ).
+        DATA(lv_errors) = REDUCE i( INIT x = 0 
+                                     FOR wa IN gt_return 
+                                     WHERE ( type = 'E' OR type = 'A' )
+                                     NEXT x = x + 1 ).
+        DATA(lv_warnings) = REDUCE i( INIT x = 0 
+                                       FOR wa IN gt_return 
+                                       WHERE ( type = 'W' )
+                                       NEXT x = x + 1 ).
+        DATA(lv_success) = REDUCE i( INIT x = 0 
+                                      FOR wa IN gt_return 
+                                      WHERE ( type = 'S' )
+                                      NEXT x = x + 1 ).
 
-ENDCLASS.
+        lo_log->add_message_text(
+          iv_text  = |Resumo: { lv_total_msgs } msgs ({ lv_errors } erros, { lv_warnings } avisos, { lv_success } sucesso)|
+          iv_msgty = 'I'
+        ).
 
-CLASS zcl_application_log IMPLEMENTATION.
-
-  METHOD constructor.
-    create_log_header(
-      iv_object    = iv_object
-      iv_subobject = iv_subobject
-      iv_extnumber = iv_extnumber
-    ).
-  ENDMETHOD.
-
-  METHOD create_log_header.
-    DATA: ls_log_header TYPE bal_s_log.
-
-    ls_log_header-object    = iv_object.
-    ls_log_header-subobject = iv_subobject.
-    ls_log_header-extnumber = iv_extnumber.
-    ls_log_header-aluser    = sy-uname.
-    ls_log_header-alprog    = sy-cprog.
-    ls_log_header-altcode   = sy-tcode.
-
-    CALL FUNCTION 'BAL_LOG_CREATE'
-      EXPORTING
-        i_s_log      = ls_log_header
-      IMPORTING
-        e_log_handle = mv_log_handle
-      EXCEPTIONS
-        OTHERS       = 1.
-  ENDMETHOD.
-
-  METHOD add_message_from_bapiret2.
-    DATA: ls_msg TYPE bal_s_msg.
-
-    ls_msg-msgty = is_return-type.
-    ls_msg-msgid = is_return-id.
-    ls_msg-msgno = is_return-number.
-    ls_msg-msgv1 = is_return-message_v1.
-    ls_msg-msgv2 = is_return-message_v2.
-    ls_msg-msgv3 = is_return-message_v3.
-    ls_msg-msgv4 = is_return-message_v4.
-
-    CALL FUNCTION 'BAL_LOG_MSG_ADD'
-      EXPORTING
-        i_log_handle = mv_log_handle
-        i_s_msg      = ls_msg
-      EXCEPTIONS
-        OTHERS       = 1.
-  ENDMETHOD.
-
-  METHOD add_message_text.
-    DATA: ls_msg TYPE bal_s_msg.
-
-    ls_msg-msgty = iv_msgty.
-    ls_msg-msgid = '00'.
-    ls_msg-msgno = '001'.
-    
-    " Dividir texto em partes se for maior que 50 caracteres
-    IF strlen( iv_text ) > 50.
-      ls_msg-msgv1 = iv_text+0(50).
-      IF strlen( iv_text ) > 100.
-        ls_msg-msgv2 = iv_text+50(50).
-        IF strlen( iv_text ) > 150.
-          ls_msg-msgv3 = iv_text+100(50).
-          IF strlen( iv_text ) > 200.
-            ls_msg-msgv4 = iv_text+150(50).
-          ENDIF.
-        ENDIF.
+      ELSE.
+        lo_log->add_message_text(
+          iv_text  = 'Nenhuma mensagem retornada pela BAPI'
+          iv_msgty = 'W'
+        ).
       ENDIF.
-    ELSE.
-      ls_msg-msgv1 = iv_text.
-    ENDIF.
 
-    CALL FUNCTION 'BAL_LOG_MSG_ADD'
-      EXPORTING
-        i_log_handle = mv_log_handle
-        i_s_msg      = ls_msg
-      EXCEPTIONS
-        OTHERS       = 1.
-  ENDMETHOD.
+      " Adicionar mensagem final baseada no resultado
+      IF lv_has_error = abap_true.
+        lo_log->add_message_text(
+          iv_text  = |ERRO: Falha ao criar usuário { me->i_user }|
+          iv_msgty = 'E'
+        ).
+      ELSEIF lv_has_warning = abap_true.
+        lo_log->add_message_text(
+          iv_text  = |AVISO: Usuário { me->i_user } criado com avisos|
+          iv_msgty = 'W'
+        ).
+      ELSE.
+        lo_log->add_message_text(
+          iv_text  = |SUCESSO: Usuário { me->i_user } criado com sucesso|
+          iv_msgty = 'S'
+        ).
+      ENDIF.
 
-  METHOD save_log.
-    DATA: lt_log_handle     TYPE bal_t_logh,
-          lt_new_lognumbers TYPE bal_t_lgnm.
+      " Salvar log no banco de dados
+      mv_log_number = lo_log->save_log( ).
 
-    APPEND mv_log_handle TO lt_log_handle.
+      " Adicionar número do log ao retorno (opcional)
+      APPEND VALUE #(
+        type       = 'I'
+        id         = '00'
+        number     = '001'
+        message    = |Log de aplicação gravado: { mv_log_number }|
+        message_v1 = mv_log_number
+      ) TO gt_return.
 
-    CALL FUNCTION 'BAL_DB_SAVE'
-      EXPORTING
-        i_t_log_handle   = lt_log_handle
-        i_save_all       = abap_true
-      IMPORTING
-        e_new_lognumbers = lt_new_lognumbers
-      EXCEPTIONS
-        log_not_found    = 1
-        save_not_allowed = 2
-        numbering_error  = 3
-        OTHERS           = 4.
+    CATCH cx_root INTO DATA(lx_error).
+      " Se houver erro ao criar log, adicionar ao retorno
+      APPEND VALUE #(
+        type    = 'E'
+        id      = '00'
+        number  = '001'
+        message = |Erro ao gravar log: { lx_error->get_text( ) }|
+      ) TO gt_return.
+  ENDTRY.
 
-    IF sy-subrc = 0 AND lt_new_lognumbers IS NOT INITIAL.
-      rv_log_number = lt_new_lognumbers[ 1 ]-lognumber.
-    ENDIF.
-
-    COMMIT WORK.
-  ENDMETHOD.
-
-ENDCLASS.
+ENDMETHOD.
