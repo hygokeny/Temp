@@ -1,4 +1,264 @@
-METHOD on_end_of_task.
+class ZCL_USER_SETTINGS definition
+  public
+  final
+  create public .
+
+public section.
+
+  methods CONSTRUCTOR
+    importing
+      value(I_USER) type BAPIBNAME-BAPIBNAME
+      value(I_DEPARTAMENT) type BAPIADDR3-DEPARTMENT
+      value(I_FUNCTION) type BAPIADDR3-FUNCTION
+      value(I_COMPANY) type BAPIADDR3-NAME
+      value(I_EMAIL) type BAPIADDR3-E_MAIL
+      value(I_BEGDA) type BAPILOGOND-GLTGV
+      value(I_ENDDA) type BAPILOGOND-GLTGB .
+  methods PREPARE_LOG .
+  methods GET_RETURN
+    returning
+      value(R_RETURN) type BAPIRET2_T .
+protected section.
+private section.
+
+  data I_USER type BAPIBNAME-BAPIBNAME .
+  data I_DEPARTAMENT type BAPIADDR3-DEPARTMENT .
+  data I_FUNCTION type BAPIADDR3-FUNCTION .
+  data I_COMPANY type BAPIADDR3-NAME .
+  data I_EMAIL type BAPIADDR3-E_MAIL .
+  data I_BEGDA type BAPILOGOND-GLTGV .
+  data I_ENDDA type BAPILOGOND-GLTGB .
+  data:
+    GT_RETURN type TABLE of BAPIRET2 .
+  data MV_LOG_NUMBER type BALOGNR .
+
+  methods UPDATE_USER
+    importing
+      value(I_USER) type BAPIBNAME-BAPIBNAME
+      value(I_DEPARTAMENT) type BAPIADDR3-DEPARTMENT
+      value(I_FUNCTION) type BAPIADDR3-FUNCTION
+      value(I_COMPANY) type BAPIADDR3-NAME
+      value(I_EMAIL) type BAPIADDR3-E_MAIL
+      value(I_BEGDA) type BAPILOGOND-GLTGV
+      value(I_ENDDA) type BAPILOGOND-GLTGB
+    exporting
+      value(E_SUCCESS) type ABAP_BOOL
+      value(E_MESSAGE) type STRING
+      value(ET_RETURN) type BAPIRET2_T .
+  methods CREATE_USER
+    importing
+      value(I_USER) type BAPIBNAME-BAPIBNAME
+      value(I_DEPARTAMENT) type BAPIADDR3-DEPARTMENT
+      value(I_FUNCTION) type BAPIADDR3-FUNCTION
+      value(I_COMPANY) type BAPIADDR3-NAME
+      value(I_EMAIL) type BAPIADDR3-E_MAIL
+      value(I_BEGDA) type BAPILOGOND-GLTGV
+      value(I_ENDDA) type BAPILOGOND-GLTGB
+    exporting
+      value(E_SUCCESS) type ABAP_BOOL
+      value(E_MESSAGE) type STRING
+      value(ET_RETURN) type BAPIRET2_T .
+  methods CHECK_VALID_USER
+    returning
+      value(IS_VALID) type ABAP_BOOL .
+ENDCLASS.
+
+
+
+CLASS ZCL_USER_SETTINGS IMPLEMENTATION.
+
+
+  method UPDATE_USER.
+
+    data lv_taskname type string VALUE 'UPDATE_TASK'.
+    data(ls_address) = VALUE bapiaddr3(
+        department       = I_DEPARTAMENT "'Departamento'
+        function         = i_function "'Funcao'
+        e_mail           = i_email "'eliezer.rodrigues@grupomoura.com.br'
+    ).
+
+    data(ls_addressx) = VALUE bapiaddr3x(
+        department       = abap_true
+        function         = abap_true
+        title            = abap_true
+        name             = abap_true
+        e_mail           = abap_true
+    ).
+
+
+    data(ls_logondata) = VALUE bapilogond(
+        gltgv           = i_begda "'19900101'
+        gltgb           = i_endda "'20300101'
+    ).
+
+    data(ls_logondatax) = VALUE bapilogonx(
+        gltgv           = abap_true
+        gltgb           = abap_true
+    ).
+
+    data(ls_company) = VALUE bapiuscomp(
+        company          = i_company
+    ).
+
+    data(ls_companyx) = VALUE bapiuscomx(
+        company = abap_true
+    ).
+
+    CALL FUNCTION 'BAPI_USER_CHANGE'
+*    STARTING NEW TASK lv_taskname
+*    DESTINATION 'NONE'
+      EXPORTING
+        username                 = i_user
+       LOGONDATA                = ls_logondata
+       LOGONDATAX               = ls_logondatax
+       ADDRESS                  = ls_address
+       ADDRESSX                 = ls_addressx
+       COMPANY                  = ls_company
+       COMPANYX                 = ls_companyx
+      tables
+        return                   = gt_RETURN.
+
+  endmethod.
+
+
+  METHOD create_user.
+    data(lv_max_tries) = 30.
+
+    DATA lv_EXCEPTION TYPE char50.
+    DATA lv_taskname TYPE char20.
+    lv_taskname = |USER_CREATE_{ sy-uzeit } { sy-datum }|.
+
+    DATA(ls_address) = VALUE bapiaddr3(
+        department       = i_departament "'Departamento'
+        function         = i_function "'Funcao'
+        e_mail           = i_email "'eliezer.rodrigues@grupomoura.com.br'
+    ).
+
+
+    DATA(ls_addressx) = VALUE bapiaddr3x(
+        department       = abap_true
+        function         = abap_true
+        title            = abap_true
+        name             = abap_true
+        e_mail           = abap_true
+    ).
+
+
+    DATA(ls_logondata) = VALUE bapilogond(
+        gltgv           = i_begda                           "'19900101'
+        gltgb           = i_endda                           "'20300101'
+    ).
+
+    DATA(ls_logondatax) = VALUE bapilogonx(
+        gltgv           = abap_true
+        gltgb           = abap_true
+    ).
+
+    DATA(ls_company) = VALUE bapiuscomp(
+        company          = i_company
+    ).
+
+    DATA(ls_companyx) = VALUE bapiuscomx(
+        company = abap_true
+    ).
+
+    DATA(ls_pass) = VALUE bapipwd(
+        bapipwd = 'SenhaMoura!@#01'
+    ).
+
+    CALL FUNCTION 'BAPI_USER_CREATE'
+*      STARTING NEW TASK lv_taskname
+*      DESTINATION IN GROUP DEFAULT
+*      CALLING on_end_of_task ON END OF TASK
+      EXPORTING
+        username              = i_user
+        logondata             = ls_logondata
+        password              = ls_pass
+*       defaults              =
+        address               = ls_address
+        company               = ls_company
+*       lock_locally          = space
+*       generate_pwd          = space
+*       description           =
+*       sapuser_uuid          =
+*      IMPORTING
+*       generated_password    =
+      TABLES
+        return                = gt_return.
+
+ENDMETHOD.
+
+
+  method CHECK_VALID_USER.
+
+    select COUNT(*)
+      from usr01
+      where bname =  me->i_user.
+      IF sy-subrc is INITIAL.
+        is_valid = abap_true.
+      ENDIF.
+  endmethod.
+
+
+  METHOD constructor.
+
+    me->i_user         = i_user       .
+    me->i_departament  = i_departament.
+    me->i_function     = i_function   .
+    me->i_company      = i_company    .
+    me->i_email        = i_email      .
+    me->i_begda        = i_begda      .
+    me->i_endda        = i_endda      .
+
+
+    "Rotina para Editar
+    IF check_valid_user( ) = abap_true.
+
+      update_user(
+        EXPORTING
+          i_user        = i_user
+          i_departament = i_departament
+          i_function    = i_function
+          i_company     = i_company
+          i_email       = i_email
+          i_begda       = i_begda
+          i_endda       = i_endda
+        IMPORTING
+          e_success     = DATA(e_success)
+          e_message     = DATA(e_message)
+          et_return     = DATA(e_return) ).
+
+
+
+      "Rotina para Criar
+    ELSE.
+
+      create_user(
+        EXPORTING
+          i_user        = i_user
+          i_departament = i_departament
+          i_function    = i_function
+          i_company     = i_company
+          i_email       = i_email
+          i_begda       = i_begda
+          i_endda       = i_endda
+        IMPORTING
+          e_success     = e_success
+          e_message     = e_message
+          et_return     = e_return ).
+
+
+    ENDIF.
+    prepare_log( ).
+  ENDMETHOD.
+
+
+  method GET_RETURN.
+    r_return = gt_return.
+  endmethod.
+
+
+METHOD PREPARE_LOG.
   DATA: lv_exception   TYPE char50,
         lo_log_writer  TYPE REF TO /aif/cl_appl_log_writer,
         lv_has_error   TYPE abap_bool VALUE abap_false,
@@ -6,27 +266,27 @@ METHOD on_end_of_task.
         lv_has_success TYPE abap_bool VALUE abap_false.
 
   " Limpar retorno anterior
-  CLEAR gt_return.
+*  CLEAR gt_return.
 
   " Receber resultados da BAPI
-  RECEIVE RESULTS FROM FUNCTION 'BAPI_USER_CREATE'
-    TABLES
-      return                = gt_return
-    EXCEPTIONS
-      communication_failure = 1 MESSAGE lv_exception
-      system_failure        = 2 MESSAGE lv_exception
-      resource_failure      = 3.
+*  RECEIVE RESULTS FROM FUNCTION 'BAPI_USER_CREATE'
+*    TABLES
+*      return                = gt_return
+*    EXCEPTIONS
+*      communication_failure = 1 MESSAGE lv_exception
+*      system_failure        = 2 MESSAGE lv_exception
+*      resource_failure      = 3.
 
   " Se houver exceção de comunicação, adicionar ao gt_return
-  IF sy-subrc <> 0.
-    APPEND VALUE #(
-      type       = 'E'
-      id         = '00'
-      number     = '398'
-      message    = |Exceção de comunicação: { lv_exception }|
-      message_v1 = lv_exception
-    ) TO gt_return.
-  ENDIF.
+*  IF sy-subrc <> 0.
+*    APPEND VALUE #(
+*      type       = 'E'
+*      id         = '00'
+*      number     = '398'
+*      message    = |Exceção de comunicação: { lv_exception }|
+*      message_v1 = lv_exception
+*    ) TO gt_return.
+*  ENDIF.
 
   " ========================================
   " CRIAR APPLICATION LOG
@@ -35,7 +295,7 @@ METHOD on_end_of_task.
       " Criar instância do log writer
       lo_log_writer = /aif/cl_appl_log_writer=>get_instance(
         iv_obj        = 'ZAPP_LOG'                                    " Objeto na SLG0
-        iv_subobj     = 'ZUSER_CRUD'                                  " Subobjeto
+        iv_subobj     = 'ZUSER_LOG'                                   " Subobjeto
         iv_extnumber  = |{ me->i_user }_{ sy-datum }{ sy-uzeit }|     " Número externo
       ).
 
@@ -345,3 +605,4 @@ METHOD on_end_of_task.
   ENDTRY.
 
 ENDMETHOD.
+ENDCLASS.
