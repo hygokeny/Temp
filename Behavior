@@ -1,0 +1,189 @@
+CLASS lhc_ZI_ListaUsuarios DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+
+    METHODS get_instance_authorizations FOR INSTANCE AUTHORIZATION
+      IMPORTING keys REQUEST requested_authorizations FOR ZI_ListaUsuarios RESULT result.
+
+    METHODS create FOR MODIFY
+      IMPORTING entities FOR CREATE ZI_ListaUsuarios.
+
+    METHODS update FOR MODIFY
+      IMPORTING entities FOR UPDATE ZI_ListaUsuarios.
+
+    METHODS delete FOR MODIFY
+      IMPORTING keys FOR DELETE ZI_ListaUsuarios.
+
+    METHODS read FOR READ
+      IMPORTING keys FOR READ ZI_ListaUsuarios RESULT result.
+
+    METHODS lock FOR LOCK
+      IMPORTING keys FOR LOCK ZI_ListaUsuarios.
+
+    METHODS rba_Toperfis FOR READ
+      IMPORTING keys_rba FOR READ ZI_ListaUsuarios\_Toperfis FULL result_requested RESULT result LINK association_links.
+
+    METHODS cba_Toperfis FOR MODIFY
+      IMPORTING entities_cba FOR CREATE ZI_ListaUsuarios\_Toperfis.
+
+ENDCLASS.
+
+CLASS lhc_ZI_ListaUsuarios IMPLEMENTATION.
+
+  METHOD get_instance_authorizations.
+  ENDMETHOD.
+
+  METHOD create.
+
+    LOOP AT entities ASSIGNING FIELD-SYMBOL(<fs_entities>).
+        call FUNCTION 'ZFM_USER_SETTINGS'
+          EXPORTING
+            i_user        = <fs_entities>-Usuario
+            i_departament = <fs_entities>-Departamento
+            i_function    = <fs_entities>-Funcao
+            i_company     = <fs_entities>-Empresa
+            i_email       = <fs_entities>-Email
+            i_begda       = <fs_entities>-ValidoDesde
+            i_endda       = <fs_entities>-ValidoAte    .
+
+            append value #(
+                %cid    = <fs_entities>-%cid
+                usuario = <fs_entities>-Usuario
+                %msg   = new_message(
+                           id       = 'ZVAR'
+                           number   = '000'
+                           severity = if_abap_behv_message=>severity-information
+                           v1       = 'CONSULTAR LOG VIA SLG1 OBJETO ZAPP_LOG'
+                         )
+                ) to reported-zi_listausuarios.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD update.
+
+  ENDMETHOD.
+
+  METHOD delete.
+  ENDMETHOD.
+
+  METHOD read.
+  ENDMETHOD.
+
+  METHOD lock.
+  ENDMETHOD.
+
+  METHOD rba_Toperfis.
+  ENDMETHOD.
+
+  METHOD cba_Toperfis.
+   data user type bapibname-bapibname.
+   data lt_return type TABLE of bapiret2.
+   data lt_role type TABLE of bapiagr.
+
+  LOOP AT entities_cba ASSIGNING FIELD-SYMBOL(<entities>).
+    data lv_taskname type string VALUE 'UPDATE_TASK'.
+    clear lt_role.
+    clear lt_return.
+
+      LOOP AT <entities>-%target ASSIGNING FIELD-SYMBOL(<target>).
+
+       append VALUE bapiagr(
+           agr_name = <target>-Role
+           from_dat = <target>-ValidoDesde
+           to_dat   = <target>-ValidoAte
+           agr_text = <target>-RoleDescricao ) to lt_role .
+       ENDLOOP.
+
+      call FUNCTION 'BAPI_USER_ACTGROUPS_ASSIGN'
+      STARTING NEW TASK lv_taskname
+      DESTINATION 'NONE'
+        EXPORTING
+          username       = <target>-Usuario
+        TABLES
+          activitygroups = lt_role
+          return         = lt_return.
+
+          wait UNTIL lv_taskname is not INITIAL.
+
+*       RECEIVE RESULTS FROM FUNCTION 'BAPI_USER_ACTGROUPS_ASSIGN'
+*        TABLES
+*          return         = lt_return.
+
+  ENDLOOP.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lhc_ZI_ListaPerfis DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+    METHODS create FOR modify
+      IMPORTING entities FOR create ZI_ListaPerfis.
+
+    METHODS update FOR MODIFY
+      IMPORTING entities FOR UPDATE ZI_ListaPerfis.
+
+    METHODS delete FOR MODIFY
+      IMPORTING keys FOR DELETE ZI_ListaPerfis.
+
+    METHODS read FOR READ
+      IMPORTING keys FOR READ ZI_ListaPerfis RESULT result.
+
+    METHODS rba_Tousuarios FOR READ
+      IMPORTING keys_rba FOR READ ZI_ListaPerfis\_Tousuarios FULL result_requested RESULT result LINK association_links.
+
+ENDCLASS.
+
+CLASS lhc_ZI_ListaPerfis IMPLEMENTATION.
+
+  METHOD create.
+  ENDMETHOD.
+
+  METHOD update.
+  ENDMETHOD.
+
+  METHOD delete.
+  ENDMETHOD.
+
+  METHOD read.
+  ENDMETHOD.
+
+  METHOD rba_Tousuarios.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lsc_ZI_LISTAUSUARIOS DEFINITION INHERITING FROM cl_abap_behavior_saver.
+  PROTECTED SECTION.
+
+    METHODS finalize REDEFINITION.
+
+    METHODS check_before_save REDEFINITION.
+
+    METHODS save REDEFINITION.
+
+    METHODS cleanup REDEFINITION.
+
+    METHODS cleanup_finalize REDEFINITION.
+
+ENDCLASS.
+
+CLASS lsc_ZI_LISTAUSUARIOS IMPLEMENTATION.
+
+  METHOD finalize.
+  ENDMETHOD.
+
+  METHOD check_before_save.
+  ENDMETHOD.
+
+  METHOD save.
+  ENDMETHOD.
+
+  METHOD cleanup.
+  ENDMETHOD.
+
+  METHOD cleanup_finalize.
+  ENDMETHOD.
+
+ENDCLASS.
