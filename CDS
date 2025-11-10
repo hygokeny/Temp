@@ -1,0 +1,133 @@
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Lista de Usuarios'
+define root view entity ZI_ListaUsuarios
+  as select from usr02 as _usr02
+    inner join   usr21 as _usr21 on _usr21.bname = _usr02.bname
+    inner join   adrp  as _adrp  on _adrp.persnumber = _usr21.persnumber
+    inner join   adcp  as _adcp  on _adcp.persnumber = _usr21.persnumber    
+    inner join   adr6  as _adr6  on _adr6.persnumber = _usr21.persnumber
+    inner join   adrc  as _adrc  on _adrc.addrnumber = _usr21.addrnumber
+    
+  composition [0..*] of ZI_ListaPerfis  as _toPerfis   
+{
+  key _usr02.bname       as Usuario,
+      _usr02.accnt       as CPF,
+      _adrp.name_text    as NomeCompleto,
+      _adr6.smtp_addr    as Email,
+      _adcp.function     as Funcao,
+      _adcp.department   as Departamento,
+      _adrc.name1        as Empresa,
+ 
+      _usr02.gltgv       as ValidoDesde,
+      _usr02.gltgb       as ValidoAte,
+      
+      _toPerfis
+}
+
+
+//
+
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Lista de Usuarios'
+define view entity ZI_ListaTransacoes
+as select from    tstc        as _TSTC
+    inner join agr_tcodes             as _agr_tcodes    on _agr_tcodes.tcode = _TSTC.tcode
+    inner join tstct             as _tstct    on _tstct.tcode = _TSTC.tcode
+                                    and _tstct.sprsl = 'P'
+    inner join agr_users as _agr_users on _agr_users.agr_name = _agr_tcodes.agr_name
+    
+    association        to parent ZI_ListaPerfis as _toPerfis  on  _toPerfis.Role = $projection.Roles
+                                                             and _toPerfis.Usuario = $projection.Usuario
+                                    
+{
+ 
+  key _agr_tcodes.agr_name as Roles,
+  key _agr_users.uname as Usuario,  
+  key _TSTC.tcode as Transacao,
+    _tstct.ttext as TransacaoDescricao,
+    _TSTC.pgmna as Programa,
+  
+  _toPerfis
+  
+}
+group by _agr_tcodes.agr_name,
+         _agr_users.uname,
+          _TSTC.tcode,
+          _tstct.ttext,
+          _TSTC.pgmna      
+//
+
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Lista de Usuarios'
+define root view entity ZI_LISTATCODES
+as select from    tstc        as _TSTC
+    inner join agr_tcodes             as _agr_tcodes    on _agr_tcodes.tcode = _TSTC.tcode
+    inner join tstct             as _tstct    on _tstct.tcode = _TSTC.tcode
+                                    and _tstct.sprsl = 'P'
+                                    
+{
+
+  key _TSTC.tcode as Transacao,
+    _tstct.ttext as TransacaoDescricao,
+    _TSTC.pgmna as Programa
+  
+}
+group by _TSTC.tcode,
+          _tstct.ttext,
+          _TSTC.pgmna      
+//
+
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Lista de Usuarios'
+define root view entity ZI_LISTAROLES 
+  as select from agr_users as _agr_users
+    inner join   agr_texts  as _agr_texts  on _agr_texts.agr_name = _agr_users.agr_name
+                                          and _agr_texts.spras = 'P'
+    inner join   agr_1251  as _AGR_1251  on _AGR_1251.agr_name = _agr_users.agr_name
+
+{
+  key _agr_users.agr_name    as Role,
+      _agr_texts.text    as RoleDescricao,
+      _agr_users.from_dat       as ValidoDesde,
+      _agr_users.to_dat       as ValidoAte
+}
+group by  _agr_users.agr_name,
+         _agr_texts.text,
+         _agr_users.from_dat,
+         _agr_users.to_dat
+//
+
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Lista de Usuarios'
+define view entity ZI_ListaPerfis 
+  as select from agr_users as _agr_users
+    inner join   agr_texts  as _agr_texts  on _agr_texts.agr_name = _agr_users.agr_name
+                                          and _agr_texts.spras = 'P'
+    inner join   agr_1251  as _AGR_1251  on _AGR_1251.agr_name = _agr_users.agr_name
+  
+   composition [0..*] of ZI_ListaTransacoes as _toTransacoes
+   
+    association        to parent ZI_ListaUsuarios as _toUsuarios  on  _toUsuarios.Usuario = $projection.Usuario
+ 
+
+{
+  key _agr_users.uname       as Usuario,
+  key _agr_users.agr_name    as Role,
+      _agr_texts.text    as RoleDescricao,
+      _agr_users.from_dat       as ValidoDesde,
+      _agr_users.to_dat       as ValidoAte,
+      _toUsuarios,
+      _toTransacoes
+}
+group by _agr_users.uname,
+         _agr_users.agr_name,
+         _agr_texts.text,
+         _agr_users.from_dat,
+         _agr_users.to_dat
+//
+
+
+
+
+
+
