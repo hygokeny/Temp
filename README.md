@@ -1,25 +1,41 @@
-REPORT zbdc_venx_auto.
+  CLEAR mt_bdc.
 
-DATA lt_steps TYPE STANDARD TABLE OF zcl_bdc_utils=>ty_bdc_step.
-DATA lo_bdc   TYPE REF TO zcl_batch_input.
-DATA lt_msgs  TYPE TABLE OF bapiret2.
-DATA ls_msg   TYPE bapiret2.
+  LOOP AT it_steps INTO DATA(ls_step).
 
-" 1) Obter passos
-lt_steps = zcl_bdc_utils=>get_steps( ).
+    IF ls_step-is_dynpro = abap_true.
+      add_dynpro(
+        iv_program = ls_step-program
+        iv_dynpro  = ls_step-dynpro
+      ).
 
-" 2) Criar objeto BDC
-CREATE OBJECT lo_bdc.
+    ELSEIF ls_step-name IS NOT INITIAL.
+      add_field(
+        iv_name  = ls_step-name
+        iv_value = ls_step-value
+      ).
+    ENDIF.
 
-" 3) Montar BDCDATA internamente
-lo_bdc->build_from_table( lt_steps ).
+  ENDLOOP.
 
-" 4) Executar
-lo_bdc->execute(
+  methods BUILD_FROM_STEPS
+  importing
+    it_steps type TT_BDC_STEP.
+
+
+    " 1) Obter passos do SHDB
+DATA(lt_steps) = get_steps( ).
+
+" 2) Montar BDCDATA
+build_from_steps( lt_steps ).
+
+" 3) Executar
+DATA lt_msgs TYPE bapiret2_t.
+execute(
   EXPORTING iv_tcode = 'ZINT_VENX'
-  IMPORTING et_msgs  = lt_msgs ).
+  IMPORTING et_msgs  = lt_msgs
+).
 
-" 5) Log
-LOOP AT lt_msgs INTO ls_msg.
-  WRITE: / ls_msg-type, ls_msg-id, ls_msg-number, ls_msg-message.
+" 4) Log
+LOOP AT lt_msgs INTO DATA(ls_msg).
+  WRITE:/ ls_msg-type, ls_msg-id, ls_msg-number, ls_msg-message.
 ENDLOOP.
