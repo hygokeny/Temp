@@ -1,46 +1,23 @@
-REPORT z_generate_pfcg_profile NO STANDARD PAGE HEADING.
+DATA: dialog TYPE c VALUE ' ',
+      gen    TYPE c.
 
-PARAMETERS p_role TYPE agr_name OBLIGATORY.
+"--------------------------------------------
+" 1. Informar role (global suposta pelo SUPRN)
+"--------------------------------------------
+global_act_objid = p_role.
 
-"--------------------------------------------------------------
-" IMPORTANTE: Todas variáveis globais da SAPLSUPRN foram
-" declaradas lá dentro. Então aqui nós só vamos preencher
-" os globais do function-pool via IMPORT/EXPORT MEMORY.
-"--------------------------------------------------------------
+"--------------------------------------------
+" 2. Ler role como a PFCG interna
+"--------------------------------------------
+PERFORM stelle_read IN PROGRAM SAPLSUPRN.
 
-DATA: gen    TYPE c,
-      dialog TYPE c VALUE ' ',
-      ret    TYPE sysubrc.
-
-"--------------------------------------------------------------
-" 1. Preencher global_act_objid
-"--------------------------------------------------------------
-EXPORT global_act_objid = p_role            TO MEMORY ID 'PFCG_OBJID'.
-
-"--------------------------------------------------------------
-" 2. Carregar dados da ROLE como a PFCG faz
-"--------------------------------------------------------------
-PERFORM agr_read IN PROGRAM SAPLSUPRN USING p_role ret.
-IF ret NE 0.
-  WRITE: / 'Erro lendo role:', p_role.
-  EXIT.
-ENDIF.
-
-" agr_read preenche automaticamente:
-" i_auth, i_au_fld, i_prof, s_stat, estado, textos, torso, etc.
-
-"--------------------------------------------------------------
-" 3. Chamar o FORM ORIGINAL de geração de perfil
-"--------------------------------------------------------------
+"--------------------------------------------
+" 3. Gerar perfil como a PFCG
+"--------------------------------------------
 PERFORM act_generate_profile IN PROGRAM SAPLSUPRN USING dialog gen.
 
 IF gen = 'X'.
-  WRITE: / 'Perfil gerado com sucesso para role:', p_role.
+  WRITE: / 'Perfil gerado para role:', p_role.
 ELSE.
-  WRITE: / 'Falha ao gerar perfil para role:', p_role, 'GEN=', gen.
+  WRITE: / 'Falha ao gerar o perfil da role:', p_role, ' GEN=', gen.
 ENDIF.
-
-"--------------------------------------------------------------
-" 4. Commit final
-"--------------------------------------------------------------
-COMMIT WORK.
