@@ -1,33 +1,58 @@
 REPORT z_regenera_perfil.
 
-PARAMETERS: p_role TYPE agr_name OBLIGATORY.
+PARAMETERS p_role TYPE agr_name OBLIGATORY.
 
-DATA: lt_auth   TYPE TABLE OF agr_1251,
-      lt_aufld  TYPE TABLE OF agr_1252,
-      lt_prof   TYPE TABLE OF agr_1016,
-      lt_prof_old TYPE TABLE OF agr_1016,
-      lt_prof_new TYPE TABLE OF agr_1016,
-      lt_b_usaut TYPE STANDARD TABLE OF usobx,
-      lt_b_usval TYPE STANDARD TABLE OF usobt,
-      lv_profile_text TYPE text80,
-      lv_actvt TYPE c VALUE '01',
-      lv_dummy TYPE c,
-      ls_prof TYPE agr_1016.
+"-------------------------------------------------------------
+" Tabelas e Work Areas
+"-------------------------------------------------------------
+DATA: lt_agr1251    TYPE TABLE OF agr_1251,
+      ls_agr1251    TYPE agr_1251,
 
-FIELD-SYMBOLS: <fs_prof> LIKE LINE OF lt_prof_new.
+      lt_agr1252    TYPE TABLE OF agr_1252,
+      ls_agr1252    TYPE agr_1252,
 
-*---------------------------------------------------------------------*
-* 1. Carrega AUTORIZAÇÕES atuais da role
-*---------------------------------------------------------------------*
-SELECT * FROM agr_1251 INTO TABLE lt_auth
+      lt_usobx      TYPE TABLE OF usobx,
+      ls_usobx      TYPE usobx,
+
+      lt_usobt      TYPE TABLE OF usobt,
+      ls_usobt      TYPE usobt,
+
+      lt_profs_old  TYPE TABLE OF uspro,
+      lt_profs_new  TYPE TABLE OF uspro,
+
+      lt_i_prof     TYPE TABLE OF pt1016,
+      ls_i_prof     TYPE pt1016,
+
+      lt_return     TYPE bapirettab,
+      ls_ret        TYPE bapiret2.
+
+DATA lv_profile_text TYPE char80.
+DATA lv_pstate       TYPE xuaktpas.
+DATA lv_dummy        TYPE char1.
+
+"-------------------------------------------------------------
+" 1. Carregar AGR_1251 (objetos + autorização + valores)
+"-------------------------------------------------------------
+SELECT * FROM agr_1251
+  INTO TABLE lt_agr1251
+  WHERE agr_name = p_role
+    AND deleted = space.
+
+IF sy-subrc <> 0.
+  WRITE: / 'Role não encontrada na AGR_1251:', p_role.
+  EXIT.
+ENDIF.
+
+"-------------------------------------------------------------
+" 2. Carregar AGR_1252 (org levels)
+"-------------------------------------------------------------
+SELECT * FROM agr_1252
+  INTO TABLE lt_agr1252
   WHERE agr_name = p_role.
 
-SELECT * FROM agr_1252 INTO TABLE lt_aufld
-  WHERE agr_name = p_role.
-
-*---------------------------------------------------------------------*
-* 2. Geração das AUTORIZAÇÕES (PRGN_AUTH_ACTIVITY_GROUP)
-*---------------------------------------------------------------------*
+"-------------------------------------------------------------
+" 3. Gerar AUTORIZAÇÕES (PRGN_AUTH_ACTIVITY_GROUP)
+"-------------------------------------------------------------
 CALL FUNCTION 'PRGN_AUTH_ACTIVITY_GROUP'
   EXPORTING
     activity_group  = p_role
@@ -38,100 +63,140 @@ CALL FUNCTION 'PRGN_AUTH_ACTIVITY_GROUP'
     OTHERS          = 2.
 
 IF sy-subrc <> 0.
-  MESSAGE 'Erro na geração de autorizações (PRGN_AUTH_ACTIVITY_GROUP)' TYPE 'E'.
+  WRITE: / 'Erro em PRGN_AUTH_ACTIVITY_GROUP.'.
+  EXIT.
 ENDIF.
 
-*---------------------------------------------------------------------*
-* 3. Monta tabelas b_usaut / b_usval
-*---------------------------------------------------------------------*
-CLEAR lt_b_usaut.
-CLEAR lt_b_usval.
+"-------------------------------------------------------------
+" 4. Montar USOBX (objetos)
+"-------------------------------------------------------------
+CLEAR lt_usobx.
 
-" Autorizacoes (AGR_1251 -> USOBX)
-LOOP AT lt_auth WHERE deleted = space.
-  DATA(ls_autx) = VALUE usobx(
-      action = '01'
-      objct  = lt_auth-object
-      auth   = lt_auth-auth
-      atext  = lt_auth-atext ).
-  APPEND ls_autx TO lt_b_usaut.
+LOOP AT lt_agr1251 INTO ls_agr1251.
+
+  CLEAR ls_usobx.
+
+  ls_usobx-name    = p_role.
+  ls_usobx-type    = 'A'.         "Tipo antigo de AUTH
+  ls_usobx-object  = ls_agr1251-object.
+  ls_usobx-okflag  = 'Y'.
+
+  APPEND ls_usobx TO lt_usobx.
+
 ENDLOOP.
 
-" Valores (AGR_1252 -> USOBT)
-LOOP AT lt_aufld WHERE deleted = space.
-  DATA(ls_val) = VALUE usobt(
-      objct  = lt_aufld-object
-      auth   = lt_aufld-auth
-      sfield = lt_aufld-field
-      von    = lt_aufld-low
-      bis    = lt_aufld-high ).
-  APPEND ls_val TO lt_b_usval.
+"-------------------------------------------------------------
+" 5. Montar USOBT (valores)
+"-------------------------------------------------------------
+CLEAR lt_usobt.
+
+" Valores vindos da AGR_1251
+LOOP AT lt_agr1251 INTO ls_agr1251.
+
+  IF ls_agr1251-field IS NOT INITIAL.
+
+    CLEAR ls_usobt.
+
+    ls_usobt-name   = p_role.
+    ls_usobt-type   = 'A'. "Mesmo tipo dos AUTH antigos
+    ls_usobt-object = ls_agr1251-object.
+    ls_usobt-field  = ls_agr1251-field.
+    ls_usobt-low    = ls_agr1251-low.
+    ls_usobt-high   = ls_agr1251-high.
+
+    APPEND ls_usobt TO lt_usobt.
+
+  ENDIF.
+
 ENDLOOP.
 
-*---------------------------------------------------------------------*
-* 4. Corrige entradas via SUPRN_CORRECT_INPUT_TABLES
-*---------------------------------------------------------------------*
+" Valores da AGR_1252 (org levels)
+LOOP AT lt_agr1252 INTO ls_agr1252.
+
+  CLEAR ls_usobt.
+
+  ls_usobt-name   = p_role.
+  ls_usobt-type   = 'A'.
+  ls_usobt-field  = ls_agr1252-varbl.
+  ls_usobt-low    = ls_agr1252-low.
+  ls_usobt-high   = ls_agr1252-high.
+
+  APPEND ls_usobt TO lt_usobt.
+
+ENDLOOP.
+
+"-------------------------------------------------------------
+" 6. Sanitizar tabelas (SUPRN_CORRECT_INPUT_TABLES)
+"-------------------------------------------------------------
 CALL FUNCTION 'SUPRN_CORRECT_INPUT_TABLES'
   TABLES
-    values = lt_b_usval
-    auths  = lt_b_usaut.
+    values = lt_usobt
+    auths  = lt_usobx.
 
-*---------------------------------------------------------------------*
-* 5. Gera PERFIL TÉCNICO via SUSR_INTERFACE_PROF
-*---------------------------------------------------------------------*
-DATA(lv_stellen_profile) = ''.  " perfil atual (opcional)
-DATA(lv_proftext) = |Perfil gerado por Z_REG_PERFIL { p_role }|.
+"-------------------------------------------------------------
+" 7. GERAR PERFIL TÉCNICO (SUSR_INTERFACE_PROF)
+"-------------------------------------------------------------
+lv_profile_text = |Perfil gerado automaticamente para role { p_role }|.
 
 CALL FUNCTION 'SUSR_INTERFACE_PROF'
   EXPORTING
-    profile                 = lv_stellen_profile
-    ptext                   = lv_proftext
+    profile                 = p_role    "perfil = role
+    ptext                   = lv_profile_text
     action                  = '01'
     no_check_in_create_mode = 'X'
     no_check_in_update_mode = 'X'
     dialog                  = space
+  IMPORTING
+    pstate                  = lv_pstate
+    return                  = lt_return
   TABLES
-    values                  = lt_b_usval
-    auths                   = lt_b_usaut
-    prof_in                 = lt_prof_old
-    prof_out                = lt_prof_new
+    values                  = lt_usobt
+    auths                   = lt_usobx
+    prof_in                 = lt_profs_old
+    prof_out                = lt_profs_new
   EXCEPTIONS
     OTHERS                  = 1.
 
 IF sy-subrc <> 0.
-  MESSAGE 'Erro na SUSR_INTERFACE_PROF ao gerar perfil técnico' TYPE 'E'.
+  WRITE: / 'Erro em SUSR_INTERFACE_PROF.'.
+  EXIT.
 ENDIF.
 
-*---------------------------------------------------------------------*
-* 6. Atualiza AGR_1016 com novo perfil
-*---------------------------------------------------------------------*
-IF lt_prof_new IS NOT INITIAL.
-  lt_prof = lt_prof_new.
-ELSE.
-  CLEAR ls_prof.
-  ls_prof-profile = lv_stellen_profile.
-  ls_prof-generated = 'X'.
-  ls_prof-pstate = 'A'.
-  APPEND ls_prof TO lt_prof.
-ENDIF.
+"-------------------------------------------------------------
+" 8. Atualizar AGR_1016
+"-------------------------------------------------------------
+CLEAR lt_i_prof.
+
+LOOP AT lt_profs_new ASSIGNING FIELD-SYMBOL(<prof>).
+
+  CLEAR ls_i_prof.
+  ls_i_prof-profile   = <prof>-profn.
+  ls_i_prof-generated = 'X'.
+  ls_i_prof-pstate    = <prof>-pstate.
+
+  APPEND ls_i_prof TO lt_i_prof.
+
+ENDLOOP.
 
 CALL FUNCTION 'PRGN_1016_SAVE_PROFILE_NAME'
   EXPORTING
     activity_group = p_role
   TABLES
-    i_prof         = lt_prof.
+    i_prof         = lt_i_prof.
 
-*---------------------------------------------------------------------*
-* 7. PRGN_UPDATE_DATABASE
-*---------------------------------------------------------------------*
+"-------------------------------------------------------------
+" 9. Persistir tudo no banco
+"-------------------------------------------------------------
 CALL FUNCTION 'PRGN_UPDATE_DATABASE'.
 
-*---------------------------------------------------------------------*
-* 8. Timestamp de geração
-*---------------------------------------------------------------------*
+"-------------------------------------------------------------
+" 10. Atualizar timestamp de geração
+"-------------------------------------------------------------
 CALL FUNCTION 'PRGN_SET_GENERATE_TIMESTAMP'
   EXPORTING
     activity_group = p_role.
 
-WRITE: / 'Perfil regenerado com sucesso para role:', p_role.
-
+"-------------------------------------------------------------
+" 11. Done
+"-------------------------------------------------------------
+WRITE: / 'Perfil regenerado com sucesso para a role:', p_role.
